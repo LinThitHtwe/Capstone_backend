@@ -1,6 +1,6 @@
-# Library Seat Reservation System – Class Diagram
+# Library Table Reservation System – Class Diagram
 
-Django-based IoT system: weight sensors → seat availability, LCD display, web map & reservations, student registration & history, admin management & analysis.
+Django-based IoT system: weight sensors on **tables** (detection by table, not seat) → table availability, LCD display, web map & reservations, student registration & history, admin management & analysis. No library zones; each table has one sensor.
 
 ---
 
@@ -37,7 +37,7 @@ classDiagram
         +get_reservation_history()
     }
 
-    %% ============ Physical / IoT Layer ============
+    %% ============ Physical / IoT Layer (sensor on table) ============
     class WeightSensor {
         +id: PK
         +sensor_id: str
@@ -59,11 +59,10 @@ classDiagram
         +inferred_occupied: bool
     }
 
-    class Seat {
+    class Table {
         +id: PK
-        +seat_number: str
+        +table_number: str
         +sensor: OneToOne WeightSensor
-        +zone: FK LibraryZone
         +position_x: int
         +position_y: int
         +label: str
@@ -71,20 +70,11 @@ classDiagram
         +get_current_availability()
     }
 
-    class LibraryZone {
-        +id: PK
-        +name: str
-        +floor: int
-        +description: str
-        +get_seats()
-        +count_available()
-    }
-
     %% ============ Reservations ============
     class Reservation {
         +id: PK
         +student: FK Student
-        +seat: FK Seat
+        +table: FK Table
         +start_time: datetime
         +end_time: datetime
         +status: Choice
@@ -109,27 +99,24 @@ classDiagram
     %% ============ Relationships ============
     User "1" -- "1" Student : has profile
     WeightSensor "1" -- "0..*" SensorReading : has readings
-    WeightSensor "1" -- "1" Seat : monitors
-    LibraryZone "1" -- "*" Seat : contains
+    WeightSensor "1" -- "1" Table : on table
     Student "1" -- "*" Reservation : has
-    Seat "1" -- "*" Reservation : has
-    LCDDisplay ..> LibraryZone : reads available count
-    LCDDisplay ..> Seat : aggregates state
+    Table "1" -- "*" Reservation : has
+    LCDDisplay ..> Table : reads available count
 ```
 
 ---
 
 ## Relationship summary
 
-| From       | To             | Relationship | Description                                      |
-|-----------|----------------|-------------|--------------------------------------------------|
-| User      | Student        | 1 : 1       | One user account, one student profile            |
-| Student   | Reservation    | 1 : N       | A student has many reservations                  |
-| Seat      | Reservation    | 1 : N       | A seat has many reservations (over time)        |
-| Seat      | WeightSensor   | 1 : 1       | Each seat is monitored by one weight sensor     |
-| WeightSensor | SensorReading | 1 : N     | Sensor has many readings (for analysis)         |
-| LibraryZone | Seat         | 1 : N       | Zone groups seats (e.g. by floor/section)        |
-| LCDDisplay  | Seat / Zone   | uses        | Reads availability to show “seats available”     |
+| From         | To             | Relationship | Description                                        |
+|-------------|----------------|-------------|----------------------------------------------------|
+| User        | Student        | 1 : 1       | One user account, one student profile              |
+| Student     | Reservation    | 1 : N       | A student has many reservations                    |
+| Table       | Reservation    | 1 : N       | A table has many reservations (over time)         |
+| Table       | WeightSensor   | 1 : 1       | Each table has one sensor (sensor on table)        |
+| WeightSensor| SensorReading  | 1 : N       | Sensor has many readings (for analysis)           |
+| LCDDisplay  | Table          | uses        | Reads availability to show “tables available”     |
 
 ---
 
@@ -138,7 +125,7 @@ classDiagram
 **Reservation status (Django `TextChoices`):**
 
 - `PENDING` – created, not yet used  
-- `SUCCESS` – student checked in / used seat  
+- `SUCCESS` – student checked in / used table  
 - `DID_NOT_COME` – no show  
 - `CANCELLED` – cancelled by student or admin  
 - `EXPIRED` – time window passed without check-in  
@@ -148,7 +135,7 @@ classDiagram
 ## Django app suggestion
 
 - **`accounts`** – `User`, `Student`  
-- **`seats`** – `LibraryZone`, `Seat`, `WeightSensor`, `SensorReading`  
+- **`tables`** – `Table`, `WeightSensor`, `SensorReading`  
 - **`reservations`** – `Reservation`  
 - **`devices`** (optional) – `LCDDisplay` if you store device config in DB  
 
@@ -160,7 +147,7 @@ classDiagram
 Save as `CLASS_DIAGRAM.puml` and open in [PlantUML](https://www.plantuml.com/plantuml) or import into draw.io.
 
 ```plantuml
-@startuml Library Seat Reservation - Class Diagram
+@startuml Library Table Reservation - Class Diagram
 skinparam classAttributeIconSize 0
 skinparam classFontStyle bold
 
@@ -191,7 +178,7 @@ package "Authentication" {
   }
 }
 
-package "IoT & Seats" {
+package "IoT & Tables (sensor on table)" {
   class WeightSensor {
     + id : PK
     + sensor_id : str
@@ -211,24 +198,15 @@ package "IoT & Seats" {
     + recorded_at : datetime
     + inferred_occupied : bool
   }
-  class Seat {
+  class Table {
     + id : PK
-    + seat_number : str
+    + table_number : str
     + sensor : OneToOne WeightSensor
-    + zone : FK LibraryZone
     + position_x : int
     + position_y : int
     + label : str
     + is_available : bool
     + get_current_availability() : bool
-  }
-  class LibraryZone {
-    + id : PK
-    + name : str
-    + floor : int
-    + description : str
-    + get_seats() : QuerySet
-    + count_available() : int
   }
 }
 
@@ -243,7 +221,7 @@ package "Reservations" {
   class Reservation {
     + id : PK
     + student : FK Student
-    + seat : FK Seat
+    + table : FK Table
     + start_time : datetime
     + end_time : datetime
     + status : ReservationStatus
@@ -269,13 +247,11 @@ package "Display" {
 
 User "1" -- "1" Student : has profile
 WeightSensor "1" -- "0..*" SensorReading : has readings
-WeightSensor "1" -- "1" Seat : monitors
-LibraryZone "1" -- "*" Seat : contains
+WeightSensor "1" -- "1" Table : on table
 Student "1" -- "*" Reservation : has
-Seat "1" -- "*" Reservation : has
+Table "1" -- "*" Reservation : has
 Reservation ..> ReservationStatus : uses
-LCDDisplay ..> LibraryZone : reads count
-LCDDisplay ..> Seat : aggregates state
+LCDDisplay ..> Table : reads available count
 
 @enduml
 ```
