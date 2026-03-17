@@ -40,7 +40,6 @@ classDiagram
     %% ============ Physical / IoT Layer (sensor on table) ============
     class WeightSensor {
         +id: PK
-        +sensor_id: str
         +name: str
         +location: str
         +calibration_weight_empty: float
@@ -89,7 +88,6 @@ classDiagram
     class LCDDisplay {
         <<Service/Device>>
         +id: PK
-        +device_id: str
         +location: str
         +last_updated: datetime
         +refresh_available_count()
