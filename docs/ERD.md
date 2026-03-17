@@ -1,14 +1,11 @@
 # Library Table Reservation System – ERD
 
-Entity-Relationship Diagram for the Django database schema. Tables follow Django naming: `app_label_modelname` (e.g. `accounts_student`, `tables_table`).
-
 ---
 
 ## Mermaid ER diagram
 
 ```mermaid
 erDiagram
-    auth_user ||--o| accounts_student : "has profile"
     accounts_student ||--o{ reservations_reservation : "has"
     tables_table ||--o{ reservations_reservation : "has"
     tables_weight_sensor ||--o| tables_table : "on table"
@@ -28,8 +25,7 @@ erDiagram
 
     accounts_student {
         int id PK
-        int user_id FK "UNIQUE"
-        varchar student_id
+        varchar student_id UK
         varchar email
         varchar phone "nullable"
         datetime created_at
@@ -37,7 +33,6 @@ erDiagram
 
     tables_weight_sensor {
         int id PK
-        varchar sensor_id UK
         varchar name
         varchar location
         decimal calibration_weight_empty
@@ -48,7 +43,7 @@ erDiagram
 
     tables_sensor_reading {
         int id PK
-        int sensor_id FK
+        int weight_sensor_id FK
         decimal weight
         datetime recorded_at
         bool inferred_occupied
@@ -57,7 +52,7 @@ erDiagram
     tables_table {
         int id PK
         varchar table_number UK
-        int sensor_id FK "UNIQUE"
+        int weight_sensor_id FK "UNIQUE"
         int position_x
         int position_y
         varchar label
@@ -77,7 +72,6 @@ erDiagram
 
     devices_lcd_display {
         int id PK
-        varchar device_id UK
         varchar location
         datetime last_updated "nullable"
     }
@@ -109,9 +103,8 @@ erDiagram
 | Column     | Type         | Constraints        | Notes                |
 |------------|--------------|--------------------|----------------------|
 | id         | INT          | PK, AUTO           |                      |
-| user_id    | INT          | FK → auth_user.id, UNIQUE, NOT NULL | One profile per user |
-| student_id | VARCHAR(50)  | NOT NULL           | e.g. matric number   |
-| email      | VARCHAR(254) |                    | Optional duplicate   |
+| student_id | VARCHAR(50)  | UNIQUE, NOT NULL   | e.g. matric number; main identifier |
+| email      | VARCHAR(254) |                    |                      |
 | phone      | VARCHAR(20)  | NULL               |                      |
 | created_at | DATETIME     | NOT NULL, auto_now_added |              |
 
@@ -121,8 +114,7 @@ erDiagram
 
 | Column                      | Type         | Constraints     | Notes                    |
 |----------------------------|--------------|-----------------|--------------------------|
-| id                         | INT          | PK, AUTO        |                          |
-| sensor_id                  | VARCHAR(50)  | UNIQUE, NOT NULL| Device identifier from IoT |
+| id                         | INT          | PK, AUTO        | Use as sensor identifier |
 | name                       | VARCHAR(100) |                 |                          |
 | location                   | VARCHAR(200) |                 |                          |
 | calibration_weight_empty   | DECIMAL(10,4)|                 | Weight = “table free”    |
@@ -134,15 +126,15 @@ erDiagram
 
 ### 4. `tables_sensor_reading`
 
-| Column           | Type         | Constraints     | Notes (history for analytics) |
-|------------------|--------------|-----------------|--------------------------------|
-| id               | INT          | PK, AUTO        |                                |
-| sensor_id        | INT          | FK → tables_weight_sensor.id, NOT NULL |     |
-| weight           | DECIMAL(10,4)| NOT NULL        |                                |
-| recorded_at      | DATETIME     | NOT NULL        |                                |
-| inferred_occupied| BOOLEAN      | NOT NULL        | From calibration thresholds   |
+| Column            | Type         | Constraints     | Notes (history for analytics) |
+|-------------------|--------------|-----------------|--------------------------------|
+| id                | INT          | PK, AUTO        |                                |
+| weight_sensor_id  | INT          | FK → tables_weight_sensor.id, NOT NULL |     |
+| weight            | DECIMAL(10,4)| NOT NULL        |                                |
+| recorded_at       | DATETIME     | NOT NULL        |                                |
+| inferred_occupied | BOOLEAN      | NOT NULL        | From calibration thresholds   |
 
-*Index on (sensor_id, recorded_at) for time-range and analytics queries.*
+*Index on (weight_sensor_id, recorded_at) for time-range and analytics queries.*
 
 ---
 
@@ -151,8 +143,8 @@ erDiagram
 | Column        | Type         | Constraints      | Notes                    |
 |---------------|--------------|------------------|--------------------------|
 | id            | INT          | PK, AUTO         |                          |
-| table_number  | VARCHAR(20)  | UNIQUE, NOT NULL | e.g. "T01", "A-1"        |
-| sensor_id     | INT          | FK → tables_weight_sensor.id, UNIQUE, NOT NULL | One sensor per table |
+| table_number     | VARCHAR(20)  | UNIQUE, NOT NULL | e.g. "T01", "A-1"        |
+| weight_sensor_id | INT          | FK → tables_weight_sensor.id, UNIQUE, NOT NULL | One sensor per table |
 | position_x    | INT          | NOT NULL         | For library map layout   |
 | position_y    | INT          | NOT NULL         | For library map layout   |
 | label         | VARCHAR(50)  |                  | Display label            |
@@ -182,7 +174,6 @@ erDiagram
 | Column       | Type         | Constraints | Notes                    |
 |--------------|--------------|-------------|--------------------------|
 | id           | INT          | PK, AUTO    |                          |
-| device_id    | VARCHAR(50)  | UNIQUE      | Physical LCD identifier  |
 | location     | VARCHAR(200) |             | Where the display is     |
 | last_updated | DATETIME     | NULL        | Last time count refreshed|
 
@@ -192,116 +183,22 @@ erDiagram
 
 | Parent table           | Child table               | Relationship | FK column    |
 |------------------------|---------------------------|-------------|-------------|
-| auth_user              | accounts_student           | 1 : 1       | student.user_id |
 | accounts_student       | reservations_reservation   | 1 : N       | reservation.student_id |
 | tables_table           | reservations_reservation   | 1 : N       | reservation.table_id |
-| tables_weight_sensor   | tables_table               | 1 : 1       | table.sensor_id |
-| tables_weight_sensor   | tables_sensor_reading      | 1 : N       | sensor_reading.sensor_id |
+| tables_weight_sensor   | tables_table               | 1 : 1       | table.weight_sensor_id |
+| tables_weight_sensor   | tables_sensor_reading      | 1 : N       | sensor_reading.weight_sensor_id |
 | devices_lcd_display    | —                          | reads       | No FK; queries tables_table |
 
 ---
 
 ## How it fits your project
 
-- **IoT:** `tables_weight_sensor` + `tables_sensor_reading` store device id, calibration, and history; backend updates `last_reading_at` and `is_available` (and optionally appends a row to `tables_sensor_reading`).
+- **IoT:** `tables_weight_sensor` + `tables_sensor_reading` store calibration and history (sensor identified by PK); backend updates `last_reading_at` and `is_available` (and optionally appends a row to `tables_sensor_reading`).
 - **Map & reservation:** `tables_table` has `position_x`, `position_y`, `table_number`, `label`, `is_available` for the web map and availability; `reservations_reservation` links students to tables and time slots.
-- **Students:** `auth_user` + `accounts_student` support registration (email) and profile; students see history via `reservations_reservation` filtered by `student_id`.
+- **Students:** `accounts_student` identified by `student_id`; students see history via `reservations_reservation` filtered by `student_id`.
 - **Admin:** Same tables support “all bookings”, “student list”, and analytics (e.g. popular table, busy hour/day) via aggregates on `reservations_reservation` and optionally `tables_sensor_reading`.
 - **LCD:** Application or device service reads from `tables_table` (e.g. `COUNT(*) WHERE is_available = TRUE`) and optionally updates `devices_lcd_display.last_updated`.
 
 This ERD is the database view of the system described in `CLASS_DIAGRAM.md`.
 
----
-
-## PlantUML ERD (optional export)
-
-Copy the block below into [PlantUML](https://www.plantuml.com/plantuml) or save as `ERD.puml` for PNG/SVG export.
-
-```plantuml
-@startuml Library Table Reservation - ERD
-!theme plain
-skinparam linetype ortho
-
-entity "auth_user" as user {
-  * id : INT <<PK>>
-  --
-  email : VARCHAR(254) <<UK>>
-  password : VARCHAR(128)
-  first_name : VARCHAR(150)
-  last_name : VARCHAR(150)
-  is_staff : BOOLEAN
-  is_active : BOOLEAN
-  date_joined : DATETIME
-}
-
-entity "accounts_student" as student {
-  * id : INT <<PK>>
-  --
-  * user_id : INT <<FK, UK>>
-  student_id : VARCHAR(50)
-  email : VARCHAR(254)
-  phone : VARCHAR(20)
-  created_at : DATETIME
-}
-
-entity "tables_weight_sensor" as sensor {
-  * id : INT <<PK>>
-  --
-  sensor_id : VARCHAR(50) <<UK>>
-  name : VARCHAR(100)
-  location : VARCHAR(200)
-  calibration_weight_empty : DECIMAL
-  calibration_weight_occupied : DECIMAL
-  last_reading_at : DATETIME
-  is_available : BOOLEAN
-}
-
-entity "tables_sensor_reading" as reading {
-  * id : INT <<PK>>
-  --
-  * sensor_id : INT <<FK>>
-  weight : DECIMAL
-  recorded_at : DATETIME
-  inferred_occupied : BOOLEAN
-}
-
-entity "tables_table" as table_ent {
-  * id : INT <<PK>>
-  --
-  table_number : VARCHAR(20) <<UK>>
-  * sensor_id : INT <<FK, UK>>
-  position_x : INT
-  position_y : INT
-  label : VARCHAR(50)
-  is_available : BOOLEAN
-}
-
-entity "reservations_reservation" as reservation {
-  * id : INT <<PK>>
-  --
-  * student_id : INT <<FK>>
-  * table_id : INT <<FK>>
-  start_time : DATETIME
-  end_time : DATETIME
-  status : VARCHAR(20)
-  created_at : DATETIME
-  checked_in_at : DATETIME
-}
-
-entity "devices_lcd_display" as lcd {
-  * id : INT <<PK>>
-  --
-  device_id : VARCHAR(50) <<UK>>
-  location : VARCHAR(200)
-  last_updated : DATETIME
-}
-
-user ||--o| student : user_id
-student ||--o{ reservation : student_id
-table_ent ||--o{ reservation : table_id
-sensor ||--o| table_ent : sensor_id
-sensor ||--o{ reading : sensor_id
-lcd .. table_ent : reads count
-
-@enduml
-```
+-
