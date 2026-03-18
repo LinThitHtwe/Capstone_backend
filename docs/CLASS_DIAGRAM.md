@@ -53,6 +53,8 @@ classDiagram
         +id: PK
         +table_number: str
         +weight_sensor: OneToOne WeightSensor
+        +table_type: str
+        +library_floor: int
         +position_x: int
         +position_y: int
         +label: str

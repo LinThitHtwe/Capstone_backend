@@ -47,6 +47,8 @@ erDiagram
         int id PK
         varchar table_number UK
         int weight_sensor_id FK "UNIQUE"
+        varchar table_type
+        int library_floor
         int position_x
         int position_y
         varchar label
@@ -129,6 +131,8 @@ erDiagram
 | id            | INT          | PK, AUTO         |                          |
 | table_number     | VARCHAR(20)  | UNIQUE, NOT NULL | e.g. "T01", "A-1"        |
 | weight_sensor_id | INT          | FK → tables_weight_sensor.id, UNIQUE, NOT NULL | One sensor per table |
+| table_type    | VARCHAR(50)  |                  | e.g. single, group, study |
+| library_floor | INT          | NOT NULL         | Floor number (1, 2, …)   |
 | position_x    | INT          | NOT NULL         | For library map layout   |
 | position_y    | INT          | NOT NULL         | For library map layout   |
 | label         | VARCHAR(50)  |                  | Display label            |
@@ -235,6 +239,8 @@ entity "tables_table" as table_ent {
   --
   table_number : VARCHAR(20) <<UK>>
   * weight_sensor_id : INT <<FK, UK>>
+  table_type : VARCHAR(50)
+  library_floor : INT
   position_x : INT
   position_y : INT
   label : VARCHAR(50)
