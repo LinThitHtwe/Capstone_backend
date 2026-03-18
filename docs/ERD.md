@@ -6,29 +6,23 @@
 
 ```mermaid
 erDiagram
-    accounts_student ||--o{ reservations_reservation : "has"
+    accounts_user ||--o{ reservations_reservation : "has"
     tables_table ||--o{ reservations_reservation : "has"
     tables_weight_sensor ||--o| tables_table : "on table"
     tables_weight_sensor ||--o{ tables_sensor_reading : "has readings"
     devices_lcd_display }o..o{ tables_table : "reads count"
 
-    auth_user {
+    accounts_user {
         int id PK
         varchar email UK
         varchar password
-        varchar first_name
-        varchar last_name
+        varchar name
+        varchar role
+        varchar student_id "nullable"
+        varchar phone "nullable"
         bool is_staff
         bool is_active
         datetime date_joined
-    }
-
-    accounts_student {
-        int id PK
-        varchar student_id UK
-        varchar email
-        varchar phone "nullable"
-        datetime created_at
     }
 
     tables_weight_sensor {
@@ -61,7 +55,7 @@ erDiagram
 
     reservations_reservation {
         int id PK
-        int student_id FK
+        int user_id FK
         int table_id FK
         datetime start_time
         datetime end_time
@@ -81,36 +75,26 @@ erDiagram
 
 ## Table definitions (Django-style)
 
-### 1. `auth_user` (Django built-in or custom User)
+### 1. `accounts_user` (single auth table with role)
 
-| Column       | Type        | Constraints   | Notes                    |
-|-------------|-------------|--------------|--------------------------|
-| id          | INT         | PK, AUTO     |                          |
-| email       | VARCHAR(254)| UNIQUE, NOT NULL | Login identifier    |
-| password    | VARCHAR(128)| NOT NULL    | Hashed                   |
-| first_name  | VARCHAR(150)|              |                          |
-| last_name   | VARCHAR(150)|              |                          |
-| is_staff    | BOOLEAN     | DEFAULT FALSE| Admin access             |
-| is_active   | BOOLEAN     | DEFAULT TRUE |                          |
-| date_joined | DATETIME    | NOT NULL     |                          |
+| Column       | Type         | Constraints     | Notes                                        |
+|-------------|--------------|-----------------|----------------------------------------------|
+| id          | INT          | PK, AUTO        |                                              |
+| email       | VARCHAR(254) | UNIQUE, NOT NULL| Login identifier                             |
+| password    | VARCHAR(128) | NOT NULL        | Hashed                                       |
+| name        | VARCHAR(150) |                 | Full name                                    |
+| role        | VARCHAR(20)  | NOT NULL        | STUDENT, STAFF, ADMIN (app role)             |
+| student_id  | VARCHAR(50)  | NULL, UNIQUE    | e.g. matric number; only for role=STUDENT   |
+| phone       | VARCHAR(20)  | NULL            |                                              |
+| is_staff    | BOOLEAN      | DEFAULT FALSE   | Django admin site access                     |
+| is_active   | BOOLEAN      | DEFAULT TRUE    |                                              |
+| date_joined | DATETIME     | NOT NULL        |                                              |
 
-*If using custom user: use `accounts_user` (or your app name) with same shape.*
-
----
-
-### 2. `accounts_student`
-
-| Column     | Type         | Constraints        | Notes                |
-|------------|--------------|--------------------|----------------------|
-| id         | INT          | PK, AUTO           |                      |
-| student_id | VARCHAR(50)  | UNIQUE, NOT NULL   | e.g. matric number; main identifier |
-| email      | VARCHAR(254) |                    |                      |
-| phone      | VARCHAR(20)  | NULL               |                      |
-| created_at | DATETIME     | NOT NULL, auto_now_added |              |
+*One table for all users; filter by `role` for students vs staff. Reservations link to `user_id` (students only in app logic).*
 
 ---
 
-### 3. `tables_weight_sensor`
+### 2. `tables_weight_sensor`
 
 | Column                      | Type         | Constraints     | Notes                    |
 |----------------------------|--------------|-----------------|--------------------------|
@@ -157,15 +141,15 @@ erDiagram
 | Column        | Type         | Constraints     | Notes                          |
 |---------------|--------------|-----------------|--------------------------------|
 | id            | INT          | PK, AUTO        |                                |
-| student_id    | INT          | FK → accounts_student.id, NOT NULL |                    |
+| user_id       | INT          | FK → accounts_user.id, NOT NULL | User who made reservation (typically role=STUDENT) |
 | table_id      | INT          | FK → tables_table.id, NOT NULL |                        |
 | start_time    | DATETIME     | NOT NULL        |                                |
 | end_time      | DATETIME     | NOT NULL        |                                |
 | status        | VARCHAR(20)  | NOT NULL        | PENDING, SUCCESS, DID_NOT_COME, CANCELLED, EXPIRED |
 | created_at    | DATETIME     | NOT NULL        | When reservation was made      |
-| checked_in_at | DATETIME     | NULL            | When student checked in (if any)|
+| checked_in_at | DATETIME     | NULL            | When user checked in (if any)   |
 
-*Indexes: (student_id, created_at) for “my reservations”; (table_id, start_time, end_time) for availability checks.*
+*Indexes: (user_id, created_at) for “my reservations”; (table_id, start_time, end_time) for availability checks.*
 
 ---
 
@@ -183,7 +167,7 @@ erDiagram
 
 | Parent table           | Child table               | Relationship | FK column    |
 |------------------------|---------------------------|-------------|-------------|
-| accounts_student       | reservations_reservation   | 1 : N       | reservation.student_id |
+| accounts_user          | reservations_reservation   | 1 : N       | reservation.user_id |
 | tables_table           | reservations_reservation   | 1 : N       | reservation.table_id |
 | tables_weight_sensor   | tables_table               | 1 : 1       | table.weight_sensor_id |
 | tables_weight_sensor   | tables_sensor_reading      | 1 : N       | sensor_reading.weight_sensor_id |
@@ -194,11 +178,94 @@ erDiagram
 ## How it fits your project
 
 - **IoT:** `tables_weight_sensor` + `tables_sensor_reading` store calibration and history (sensor identified by PK); backend updates `last_reading_at` and `is_available` (and optionally appends a row to `tables_sensor_reading`).
-- **Map & reservation:** `tables_table` has `position_x`, `position_y`, `table_number`, `label`, `is_available` for the web map and availability; `reservations_reservation` links students to tables and time slots.
-- **Students:** `accounts_student` identified by `student_id`; students see history via `reservations_reservation` filtered by `student_id`.
+- **Map & reservation:** `tables_table` has `position_x`, `position_y`, `table_number`, `label`, `is_available` for the web map and availability; `reservations_reservation` links users to tables and time slots.
+- **Users:** Single `accounts_user` table with `role` (STUDENT, STAFF, ADMIN); students have `student_id`; staff use same table. Reservation history via `reservations_reservation` filtered by `user_id` (and role=STUDENT in app logic).
 - **Admin:** Same tables support “all bookings”, “student list”, and analytics (e.g. popular table, busy hour/day) via aggregates on `reservations_reservation` and optionally `tables_sensor_reading`.
 - **LCD:** Application or device service reads from `tables_table` (e.g. `COUNT(*) WHERE is_available = TRUE`) and optionally updates `devices_lcd_display.last_updated`.
 
 This ERD is the database view of the system described in `CLASS_DIAGRAM.md`.
+ 
+---
 
+## PlantUML ERD (optional export)
+
+Copy the block below into [PlantUML](https://www.plantuml.com/plantuml) or save as `ERD.puml` for PNG/SVG export.
+
+```plantuml
+@startuml Library Table Reservation - ERD
+!theme plain
+skinparam linetype ortho
+
+entity "accounts_user" as user {
+  * id : INT <<PK>>
+  --
+  email : VARCHAR(254) <<UK>>
+  password : VARCHAR(128)
+  name : VARCHAR(150)
+  role : VARCHAR(20)
+  student_id : VARCHAR(50)
+  phone : VARCHAR(20)
+  is_staff : BOOLEAN
+  is_active : BOOLEAN
+  date_joined : DATETIME
+}
+
+entity "tables_weight_sensor" as sensor {
+  * id : INT <<PK>>
+  --
+  name : VARCHAR(100)
+  location : VARCHAR(200)
+  calibration_weight_empty : DECIMAL
+  calibration_weight_occupied : DECIMAL
+  last_reading_at : DATETIME
+  is_available : BOOLEAN
+}
+
+entity "tables_sensor_reading" as reading {
+  * id : INT <<PK>>
+  --
+  * weight_sensor_id : INT <<FK>>
+  weight : DECIMAL
+  recorded_at : DATETIME
+  inferred_occupied : BOOLEAN
+}
+
+entity "tables_table" as table_ent {
+  * id : INT <<PK>>
+  --
+  table_number : VARCHAR(20) <<UK>>
+  * weight_sensor_id : INT <<FK, UK>>
+  position_x : INT
+  position_y : INT
+  label : VARCHAR(50)
+  is_available : BOOLEAN
+}
+
+entity "reservations_reservation" as reservation {
+  * id : INT <<PK>>
+  --
+  * user_id : INT <<FK>>
+  * table_id : INT <<FK>>
+  start_time : DATETIME
+  end_time : DATETIME
+  status : VARCHAR(20)
+  created_at : DATETIME
+  checked_in_at : DATETIME
+}
+
+entity "devices_lcd_display" as lcd {
+  * id : INT <<PK>>
+  --
+  location : VARCHAR(200)
+  last_updated : DATETIME
+}
+
+user ||--o{ reservation : user_id
+table_ent ||--o{ reservation : table_id
+sensor ||--o| table_ent : weight_sensor_id
+sensor ||--o{ reading : weight_sensor_id
+lcd .. table_ent : reads count
+
+@enduml
+```
 -

@@ -1,6 +1,6 @@
 # Library Table Reservation System – Class Diagram
 
-Django-based IoT system: weight sensors on **tables** (detection by table, not seat) → table availability, LCD display, web map & reservations, student registration & history, admin management & analysis. No library zones; each table has one sensor.
+Django-based IoT system: weight sensors on **tables** (detection by table, not seat) → table availability, LCD display, web map & reservations. Single **User** table with **role** (STUDENT, STAFF, ADMIN); students and staff in one model. No library zones; each table has one sensor.
 
 ---
 
@@ -10,31 +10,22 @@ Django-based IoT system: weight sensors on **tables** (detection by table, not s
 classDiagram
     direction TB
 
-    %% ============ Authentication & Users ============
+    %% ============ Authentication (single User with role) ============
     class User {
         <<Django AbstractUser>>
         +id: PK
         +email: str
         +password: str
-        +first_name: str
-        +last_name: str
+        +name: str
+        +role: str
+        +student_id: str
+        +phone: str
         +is_staff: bool
         +is_active: bool
         +date_joined: datetime
         +is_student() bool
-        +is_admin() bool
-    }
-
-    class Student {
-        <<Profile>>
-        +id: PK
-        +user: OneToOne User
-        +student_id: str
-        +email: str
-        +phone: str
-        +created_at: datetime
+        +is_staff_role() bool
         +get_reservations()
-        +get_reservation_history()
     }
 
     %% ============ Physical / IoT Layer (sensor on table) ============
@@ -52,7 +43,7 @@ classDiagram
 
     class SensorReading {
         +id: PK
-        +sensor: FK WeightSensor
+        +weight_sensor: FK WeightSensor
         +weight: float
         +recorded_at: datetime
         +inferred_occupied: bool
@@ -61,7 +52,7 @@ classDiagram
     class Table {
         +id: PK
         +table_number: str
-        +sensor: OneToOne WeightSensor
+        +weight_sensor: OneToOne WeightSensor
         +position_x: int
         +position_y: int
         +label: str
@@ -72,7 +63,7 @@ classDiagram
     %% ============ Reservations ============
     class Reservation {
         +id: PK
-        +student: FK Student
+        +user: FK User
         +table: FK Table
         +start_time: datetime
         +end_time: datetime
@@ -95,10 +86,9 @@ classDiagram
     }
 
     %% ============ Relationships ============
-    User "1" -- "1" Student : has profile
     WeightSensor "1" -- "0..*" SensorReading : has readings
     WeightSensor "1" -- "1" Table : on table
-    Student "1" -- "*" Reservation : has
+    User "1" -- "*" Reservation : has
     Table "1" -- "*" Reservation : has
     LCDDisplay ..> Table : reads available count
 ```
@@ -109,8 +99,7 @@ classDiagram
 
 | From         | To             | Relationship | Description                                        |
 |-------------|----------------|-------------|----------------------------------------------------|
-| User        | Student        | 1 : 1       | One user account, one student profile              |
-| Student     | Reservation    | 1 : N       | A student has many reservations                    |
+| User        | Reservation    | 1 : N       | A user has many reservations (students in app logic) |
 | Table       | Reservation    | 1 : N       | A table has many reservations (over time)         |
 | Table       | WeightSensor   | 1 : 1       | Each table has one sensor (sensor on table)        |
 | WeightSensor| SensorReading  | 1 : N       | Sensor has many readings (for analysis)           |
@@ -123,9 +112,9 @@ classDiagram
 **Reservation status (Django `TextChoices`):**
 
 - `PENDING` – created, not yet used  
-- `SUCCESS` – student checked in / used table  
+- `SUCCESS` – user checked in / used table  
 - `DID_NOT_COME` – no show  
-- `CANCELLED` – cancelled by student or admin  
+- `CANCELLED` – cancelled by user or admin  
 - `EXPIRED` – time window passed without check-in  
 
 
