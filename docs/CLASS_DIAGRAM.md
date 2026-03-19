@@ -1,6 +1,6 @@
 # Library Table Reservation System – Class Diagram
 
-Django-based IoT system: weight sensors on **tables** (detection by table, not seat) → table availability, LCD display, web map & reservations. Single **User** table with **role** (STUDENT, STAFF, ADMIN); students and staff in one model. No library zones; each table has one sensor.
+Entrance LCD (available-seat count), reservable vs walk-in tables, table type (e.g. 1-person, 4-person), per-table LCD (status + countdown), OTP keypad check-in, librarian overstay alerts, email reminder before session end, and virtual map for layout and booking.
 
 ---
 
@@ -10,7 +10,7 @@ Django-based IoT system: weight sensors on **tables** (detection by table, not s
 classDiagram
     direction TB
 
-    %% ============ Authentication (single User with role) ============
+    %% ============ Authentication ============
     class User {
         <<Django AbstractUser>>
         +id: PK
@@ -28,7 +28,7 @@ classDiagram
         +get_reservations()
     }
 
-    %% ============ Physical / IoT Layer (sensor on table) ============
+    %% ============ Physical / IoT ============
     class WeightSensor {
         +id: PK
         +name: str
@@ -53,6 +53,7 @@ classDiagram
         +id: PK
         +table_number: str
         +weight_sensor: OneToOne WeightSensor
+        +is_reservable: bool
         +table_type: str
         +library_floor: int
         +position_x: int
@@ -60,6 +61,7 @@ classDiagram
         +label: str
         +is_available: bool
         +get_current_availability()
+        +is_available_to_book(slot)
     }
 
     %% ============ Reservations ============
@@ -70,21 +72,29 @@ classDiagram
         +start_time: datetime
         +end_time: datetime
         +status: Choice
+        +otp: str
         +created_at: datetime
         +checked_in_at: datetime
+        +reminder_email_sent_at: datetime
+        +overstay_alerted_at: datetime
         +cancel()
         +mark_did_not_come()
+        +check_in_with_otp(otp)
         +mark_success()
     }
 
-    %% ============ Display / External ============
+    %% ============ Displays ============
     class LCDDisplay {
         <<Service/Device>>
         +id: PK
+        +display_type: str
+        +table: FK Table (optional)
         +location: str
         +last_updated: datetime
-        +refresh_available_count()
-        +get_display_data()
+        +get_entrance_count()
+        +get_table_status()
+        +get_countdown_minutes()
+        +show_status_and_countdown()
     }
 
     %% ============ Relationships ============
@@ -92,7 +102,9 @@ classDiagram
     WeightSensor "1" -- "1" Table : on table
     User "1" -- "*" Reservation : has
     Table "1" -- "*" Reservation : has
-    LCDDisplay ..> Table : reads available count
+    Table "1" -- "0..1" LCDDisplay : table LCD
+    LCDDisplay ..> Table : entrance reads total available count (display_type=ENTRANCE)
+    LCDDisplay ..> Reservation : table LCD reads active reservation for status/countdown (display_type=TABLE)
 ```
 
 ---
@@ -102,21 +114,37 @@ classDiagram
 | From         | To             | Relationship | Description                                        |
 |-------------|----------------|-------------|----------------------------------------------------|
 | User        | Reservation    | 1 : N       | A user has many reservations (students in app logic) |
-| Table       | Reservation    | 1 : N       | A table has many reservations (over time)         |
+| Table       | Reservation    | 1 : N       | A table has many reservations (only if is_reservable) |
+| Table       | LCDDisplay     | 0..1 : 1    | Reservable table may have one table LCD (status, countdown) |
 | Table       | WeightSensor   | 1 : 1       | Each table has one sensor (sensor on table)        |
 | WeightSensor| SensorReading  | 1 : N       | Sensor has many readings (for analysis)           |
-| LCDDisplay  | Table          | uses        | Reads availability to show “tables available”     |
+| LCDDisplay  | Table          | uses        | Entrance LCD reads total available count; table LCD reads that table’s status |
+| LCDDisplay  | Reservation    | uses        | Table LCD derives countdown/status from active reservation |
 
 ---
 
 ## Enumerations / Choices
 
-**Reservation status (Django `TextChoices`):**
+**Table:**  
+- **is_reservable:** true = book in advance, false = walk-in only.  
+- **table_type:** e.g. SINGLE (1-person), DOUBLE (2-person), QUAD (4-person).
 
-- `PENDING` – created, not yet used  
-- `SUCCESS` – user checked in / used table  
+**LCDDisplay.display_type:** `ENTRANCE` (at library entrance) | `TABLE` (at a reservable table).
+
+**Reservation status:**  
+- `PENDING` – created, not yet checked in  
+- `SUCCESS` – user checked in with OTP / used table  
 - `DID_NOT_COME` – no show  
-- `CANCELLED` – cancelled by user or admin  
+- `CANCELLED` – cancelled by user or librarian  
 - `EXPIRED` – time window passed without check-in  
 
+---
 
+## Behaviour summary
+
+- **Entrance LCD:** Shows total available seats (all tables where is_available = true).  
+- **Table LCD (reservable):** Shows status (reserved, available, etc.) and, in last 30 minutes of session, countdown; student sees reminder before session expires.  
+- **OTP keypad:** At reservable table, user enters OTP; system verifies and sets checked_in_at (confirms booker is at table).  
+- **Librarian:** Gets alert when student sits beyond booking time (overstay); overstay_alerted_at used so alert is sent once.  
+- **Email:** Reminder sent to student before session expires; reminder_email_sent_at avoids duplicate emails.  
+- **Virtual map:** Uses Table (position_x, position_y, library_floor, is_reservable, is_available). Shows free/occupied and which reservable tables are available to book; student clicks reservable table to create reservation.
