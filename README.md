@@ -25,6 +25,14 @@ cd capstone-testing
 
 ## Setup (Windows PowerShell)
 
+### Fastest way (recommended)
+
+This repo includes a Windows helper script that creates the venv (if missing), installs deps, migrates, and runs the server on a safe port (**8001**):
+
+```powershell
+.\run.ps1
+```
+
 ### 1) Create & activate a virtual environment
 
 ```powershell
@@ -54,12 +62,12 @@ python manage.py migrate
 ### 4) Start the dev server
 
 ```powershell
-python manage.py runserver
+python manage.py runserver 127.0.0.1:8001
 ```
 
 Open the health endpoint to confirm it works:
 
-- **GET** `http://127.0.0.1:8000/api/health/`
+- **GET** `http://127.0.0.1:8001/api/health/`
 
 Expected response (example):
 
@@ -82,7 +90,7 @@ python manage.py migrate
 python manage.py runserver
 ```
 
-Then visit `http://127.0.0.1:8000/api/health/`.
+Then visit `http://127.0.0.1:8001/api/health/`.
 
 ## Useful commands
 
