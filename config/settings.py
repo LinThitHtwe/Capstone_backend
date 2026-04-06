@@ -129,6 +129,8 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+AUTH_USER_MODEL = 'api.User'
+
 # Django REST Framework (placeholder defaults — tighten for production)
 REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
