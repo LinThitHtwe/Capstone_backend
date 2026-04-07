@@ -2,7 +2,7 @@ from django.contrib.auth import get_user_model
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
-from .constants import ROLE_ADMIN, ROLE_MEMBER
+from .constants import ROLE_MEMBER
 
 User = get_user_model()
 
@@ -29,8 +29,14 @@ class SignupSerializer(serializers.ModelSerializer):
         return User.objects.create_user(password=password, **validated_data)
 
 
+class UserMeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ("id", "email", "name", "role", "id_number")
+
+
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
-    """Include role and email in the JWT payload for the frontend."""
+    """JWT claims include role/email; JSON body also returns ``user`` for redirect UX."""
 
     @classmethod
     def get_token(cls, user):
@@ -39,8 +45,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         token["email"] = user.email
         return token
 
-
-class UserMeSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = User
-        fields = ("id", "email", "name", "role", "id_number")
+    def validate(self, attrs):
+        data = super().validate(attrs)
+        data["user"] = UserMeSerializer(self.user).data
+        return data
