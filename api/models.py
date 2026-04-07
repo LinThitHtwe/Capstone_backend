@@ -1,7 +1,10 @@
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
 from django.contrib.auth.base_user import BaseUserManager
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
+
+from .constants import ROLE_ADMIN
 
 
 class UserManager(BaseUserManager):
@@ -24,6 +27,7 @@ class UserManager(BaseUserManager):
     def create_superuser(self, email, password=None, **extra_fields):
         extra_fields.setdefault("is_staff", True)
         extra_fields.setdefault("is_superuser", True)
+        extra_fields.setdefault("role", ROLE_ADMIN)
         return self._create_user(email, password, **extra_fields)
 
 
@@ -46,6 +50,21 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return self.email
+
+    @property
+    def is_admin(self) -> bool:
+        return self.role == ROLE_ADMIN
+
+    def save(self, *args, **kwargs):
+        if self.role == ROLE_ADMIN:
+            qs = User.objects.filter(role=ROLE_ADMIN)
+            if self.pk:
+                qs = qs.exclude(pk=self.pk)
+            if qs.exists():
+                raise ValidationError(
+                    {"role": "Only one admin account is allowed in the system."}
+                )
+        super().save(*args, **kwargs)
 
 
 class WeightSensor(models.Model):
