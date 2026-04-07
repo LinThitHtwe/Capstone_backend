@@ -1,4 +1,4 @@
-# Capstone testing (Django REST API placeholder)
+# Capstone testing (Django REST API placeholder) test
 
 Minimal **Django + Django REST Framework** project scaffold so the team can clone, run, and start building endpoints later.
 
