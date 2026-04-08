@@ -83,9 +83,11 @@ class Table(models.Model):
     table_number = models.IntegerField(unique=True)
     weight_sensor = models.ForeignKey(
         WeightSensor,
-        on_delete=models.PROTECT,
+        on_delete=models.SET_NULL,
         db_column="weight_sensor_id",
         related_name="tables",
+        null=True,
+        blank=True,
     )
     is_reservable = models.BooleanField(default=True)
     table_type = models.CharField(max_length=64, db_column="type")

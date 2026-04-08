@@ -3,6 +3,7 @@ from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 from .constants import ROLE_MEMBER
+from .models import Table, WeightSensor
 
 User = get_user_model()
 
@@ -49,3 +50,27 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         data = super().validate(attrs)
         data["user"] = UserMeSerializer(self.user).data
         return data
+
+
+class AdminTableSerializer(serializers.ModelSerializer):
+    # Table-only CRUD for now: sensor is optional.
+    weight_sensor_id = serializers.PrimaryKeyRelatedField(
+        source="weight_sensor",
+        queryset=WeightSensor.objects.all(),
+        required=False,
+        allow_null=True,
+    )
+
+    class Meta:
+        model = Table
+        fields = (
+            "id",
+            "table_number",
+            "table_type",
+            "library_floor",
+            "position_x",
+            "position_y",
+            "is_reservable",
+            "is_available",
+            "weight_sensor_id",
+        )
