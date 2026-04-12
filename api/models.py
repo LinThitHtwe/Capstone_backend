@@ -68,7 +68,7 @@ class User(AbstractBaseUser, PermissionsMixin):
 
 
 class WeightSensor(models.Model):
-    location = models.CharField(max_length=255)
+    name = models.CharField(max_length=255)
     last_reading_at = models.DateTimeField(null=True, blank=True)
     is_available = models.BooleanField(default=True)
 
@@ -76,7 +76,7 @@ class WeightSensor(models.Model):
         db_table = "weight_sensor"
 
     def __str__(self):
-        return f"{self.location} ({self.pk})"
+        return f"{self.name} ({self.pk})"
 
 
 class Table(models.Model):

@@ -32,7 +32,11 @@ class PublicTableListView(generics.ListAPIView):
     pagination_class = None
 
     def get_queryset(self):
-        return Table.objects.all().order_by("table_number")
+        return (
+            Table.objects.select_related("weight_sensor")
+            .all()
+            .order_by("table_number")
+        )
 
 
 class PublicMapReservationListView(generics.ListAPIView):

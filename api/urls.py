@@ -63,6 +63,16 @@ urlpatterns = [
         name="admin_visitor_detail",
     ),
     re_path(
+        r"^admin/reservations/?$",
+        admin_views.AdminReservationListView.as_view(),
+        name="admin_reservations",
+    ),
+    re_path(
+        r"^admin/reservations/(?P<pk>\d+)/?$",
+        admin_views.AdminReservationDetailView.as_view(),
+        name="admin_reservation_detail",
+    ),
+    re_path(
         r"^admin/weight-sensors/?$",
         admin_views.AdminWeightSensorListCreateView.as_view(),
         name="admin_weight_sensors",

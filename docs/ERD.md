@@ -29,7 +29,7 @@ erDiagram
 
     weight_sensor {
         int id PK
-        varchar location
+        varchar name
         datetime last_reading_at
         bool is_available
     }
@@ -100,7 +100,7 @@ erDiagram
 | Column          | Type     | Constraints | Notes |
 |----------------|----------|------------|------|
 | id             | INT      | PK         |      |
-| location       | VARCHAR  |            |      |
+| name           | VARCHAR  |            |      |
 | last_reading_at| DATETIME |            |      |
 | is_available   | BOOLEAN  |            |      |
 
@@ -222,7 +222,7 @@ entity "User" as user {
 entity "weight_sensor" as sensor {
   * id : INT <<PK>>
   --
-  location : VARCHAR
+  name : VARCHAR
   last_reading_at : DATETIME
   is_available : BOOLEAN
 }

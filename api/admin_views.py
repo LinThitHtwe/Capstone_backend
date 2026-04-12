@@ -1,5 +1,5 @@
 from django.contrib.auth import get_user_model
-from django.db.models import Q
+from django.db.models import Prefetch, Q
 from rest_framework import generics
 from rest_framework.pagination import PageNumberPagination
 
@@ -10,10 +10,11 @@ from .constants import (
     ROLE_STUDENT,
     ROLE_VISITOR,
 )
-from .models import LCDDisplay, Table, WeightSensor
+from .models import LCDDisplay, Reservation, Table, WeightSensor
 from .permissions import IsAdminRole
 from .serializers import (
     AdminLCDDisplaySerializer,
+    AdminReservationSerializer,
     AdminStudentSerializer,
     AdminTableSerializer,
     AdminWeightSensorSerializer,
@@ -146,28 +147,104 @@ class AdminVisitorDetailView(generics.RetrieveAPIView):
     queryset = User.objects.filter(role=ROLE_VISITOR)
 
 
+class AdminReservationListView(generics.ListAPIView):
+    permission_classes = [IsAdminRole]
+    serializer_class = AdminReservationSerializer
+    pagination_class = AdminStudentPagination
+
+    def get_queryset(self):
+        qs = Reservation.objects.select_related("user", "table").all()
+        search = (self.request.query_params.get("search") or "").strip()
+        if search:
+            q = (
+                Q(user__email__icontains=search)
+                | Q(user__name__icontains=search)
+                | Q(user__id_number__icontains=search)
+            )
+            try:
+                tn = int(search)
+                q |= Q(table__table_number=tn)
+            except ValueError:
+                pass
+            qs = qs.filter(q)
+        ordering = self.request.query_params.get("ordering") or "-start_time"
+        order_map = {
+            "id": "id",
+            "-id": "-id",
+            "start_time": "start_time",
+            "-start_time": "-start_time",
+            "end_time": "end_time",
+            "-end_time": "-end_time",
+            "created_at": "created_at",
+            "-created_at": "-created_at",
+            "duration_minutes": "duration_minutes",
+            "-duration_minutes": "-duration_minutes",
+            "table_number": "table__table_number",
+            "-table_number": "-table__table_number",
+            "user_email": "user__email",
+            "-user_email": "-user__email",
+            "user_name": "user__name",
+            "-user_name": "-user__name",
+            "is_available": "is_available",
+            "-is_available": "-is_available",
+        }
+        if ordering in order_map:
+            qs = qs.order_by(order_map[ordering])
+        else:
+            qs = qs.order_by("-start_time")
+        return qs
+
+
+class AdminReservationDetailView(generics.RetrieveAPIView):
+    permission_classes = [IsAdminRole]
+    serializer_class = AdminReservationSerializer
+    queryset = Reservation.objects.select_related("user", "table").all()
+
+
 class AdminWeightSensorListCreateView(generics.ListCreateAPIView):
     permission_classes = [IsAdminRole]
     serializer_class = AdminWeightSensorSerializer
-    queryset = WeightSensor.objects.all().order_by("id")
+
+    def get_queryset(self):
+        return (
+            WeightSensor.objects.prefetch_related(
+                Prefetch(
+                    "tables",
+                    queryset=Table.objects.all().order_by("table_number"),
+                )
+            )
+            .all()
+            .order_by("id")
+        )
 
 
 class AdminWeightSensorDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [IsAdminRole]
     serializer_class = AdminWeightSensorSerializer
-    queryset = WeightSensor.objects.all()
+
+    def get_queryset(self):
+        return WeightSensor.objects.prefetch_related(
+            Prefetch(
+                "tables",
+                queryset=Table.objects.all().order_by("table_number"),
+            )
+        ).all()
 
 
 class AdminLCDDisplayListCreateView(generics.ListCreateAPIView):
     permission_classes = [IsAdminRole]
     serializer_class = AdminLCDDisplaySerializer
-    queryset = LCDDisplay.objects.all().order_by("id")
+
+    def get_queryset(self):
+        return LCDDisplay.objects.select_related("table").all().order_by("id")
 
 
 class AdminLCDDisplayDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [IsAdminRole]
     serializer_class = AdminLCDDisplaySerializer
-    queryset = LCDDisplay.objects.all()
+
+    def get_queryset(self):
+        return LCDDisplay.objects.select_related("table").all()
 
 
 class AdminTableListCreateView(generics.ListCreateAPIView):
@@ -175,7 +252,11 @@ class AdminTableListCreateView(generics.ListCreateAPIView):
     serializer_class = AdminTableSerializer
 
     def get_queryset(self):
-        qs = Table.objects.all().order_by("table_number")
+        qs = (
+            Table.objects.select_related("weight_sensor", "lcd_display")
+            .all()
+            .order_by("table_number")
+        )
         floor = self.request.query_params.get("floor")
         if floor is not None:
             try:
@@ -190,5 +271,5 @@ class AdminTableListCreateView(generics.ListCreateAPIView):
 class AdminTableDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [IsAdminRole]
     serializer_class = AdminTableSerializer
-    queryset = Table.objects.all()
+    queryset = Table.objects.select_related("weight_sensor", "lcd_display").all()
 
