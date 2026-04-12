@@ -3,7 +3,13 @@ from django.db.models import Q
 from rest_framework import generics
 from rest_framework.pagination import PageNumberPagination
 
-from .constants import ROLE_MEMBER, ROLE_STUDENT
+from .constants import (
+    ROLE_LECTURER,
+    ROLE_MEMBER,
+    ROLE_STAFF,
+    ROLE_STUDENT,
+    ROLE_VISITOR,
+)
 from .models import LCDDisplay, Table, WeightSensor
 from .permissions import IsAdminRole
 from .serializers import (
@@ -62,6 +68,82 @@ class AdminStudentDetailView(generics.RetrieveAPIView):
     permission_classes = [IsAdminRole]
     serializer_class = AdminStudentSerializer
     queryset = User.objects.filter(role__in=(ROLE_STUDENT, ROLE_MEMBER))
+
+
+def _admin_user_list_queryset_for_role(request, role: str):
+    qs = User.objects.filter(role=role)
+    search = (request.query_params.get("search") or "").strip()
+    if search:
+        qs = qs.filter(
+            Q(email__icontains=search)
+            | Q(name__icontains=search)
+            | Q(id_number__icontains=search)
+        )
+    ordering = request.query_params.get("ordering") or "-date_joined"
+    allowed = {
+        "name",
+        "-name",
+        "email",
+        "-email",
+        "id_number",
+        "-id_number",
+        "date_joined",
+        "-date_joined",
+        "id",
+        "-id",
+        "is_active",
+        "-is_active",
+    }
+    if ordering in allowed:
+        qs = qs.order_by(ordering)
+    else:
+        qs = qs.order_by("-date_joined")
+    return qs
+
+
+class AdminStaffListView(generics.ListAPIView):
+    permission_classes = [IsAdminRole]
+    serializer_class = AdminStudentSerializer
+    pagination_class = AdminStudentPagination
+
+    def get_queryset(self):
+        return _admin_user_list_queryset_for_role(self.request, ROLE_STAFF)
+
+
+class AdminStaffDetailView(generics.RetrieveAPIView):
+    permission_classes = [IsAdminRole]
+    serializer_class = AdminStudentSerializer
+    queryset = User.objects.filter(role=ROLE_STAFF)
+
+
+class AdminLecturerListView(generics.ListAPIView):
+    permission_classes = [IsAdminRole]
+    serializer_class = AdminStudentSerializer
+    pagination_class = AdminStudentPagination
+
+    def get_queryset(self):
+        return _admin_user_list_queryset_for_role(self.request, ROLE_LECTURER)
+
+
+class AdminLecturerDetailView(generics.RetrieveAPIView):
+    permission_classes = [IsAdminRole]
+    serializer_class = AdminStudentSerializer
+    queryset = User.objects.filter(role=ROLE_LECTURER)
+
+
+class AdminVisitorListView(generics.ListAPIView):
+    permission_classes = [IsAdminRole]
+    serializer_class = AdminStudentSerializer
+    pagination_class = AdminStudentPagination
+
+    def get_queryset(self):
+        return _admin_user_list_queryset_for_role(self.request, ROLE_VISITOR)
+
+
+class AdminVisitorDetailView(generics.RetrieveAPIView):
+    permission_classes = [IsAdminRole]
+    serializer_class = AdminStudentSerializer
+    queryset = User.objects.filter(role=ROLE_VISITOR)
 
 
 class AdminWeightSensorListCreateView(generics.ListCreateAPIView):

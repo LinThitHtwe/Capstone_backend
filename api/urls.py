@@ -33,6 +33,36 @@ urlpatterns = [
         name="admin_student_detail",
     ),
     re_path(
+        r"^admin/staff/?$",
+        admin_views.AdminStaffListView.as_view(),
+        name="admin_staff",
+    ),
+    re_path(
+        r"^admin/staff/(?P<pk>\d+)/?$",
+        admin_views.AdminStaffDetailView.as_view(),
+        name="admin_staff_detail",
+    ),
+    re_path(
+        r"^admin/lecturers/?$",
+        admin_views.AdminLecturerListView.as_view(),
+        name="admin_lecturers",
+    ),
+    re_path(
+        r"^admin/lecturers/(?P<pk>\d+)/?$",
+        admin_views.AdminLecturerDetailView.as_view(),
+        name="admin_lecturer_detail",
+    ),
+    re_path(
+        r"^admin/visitors/?$",
+        admin_views.AdminVisitorListView.as_view(),
+        name="admin_visitors",
+    ),
+    re_path(
+        r"^admin/visitors/(?P<pk>\d+)/?$",
+        admin_views.AdminVisitorDetailView.as_view(),
+        name="admin_visitor_detail",
+    ),
+    re_path(
         r"^admin/weight-sensors/?$",
         admin_views.AdminWeightSensorListCreateView.as_view(),
         name="admin_weight_sensors",
