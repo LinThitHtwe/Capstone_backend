@@ -34,14 +34,15 @@ SECRET_KEY = os.environ.get(
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-# IoT / LAN: allow requests by PC IPv4 (ipconfig). Bind server with:
-#   python manage.py runserver 0.0.0.0:8001
+# IoT / LAN: bind with ``python manage.py runserver 0.0.0.0:8001`` (see run.ps1).
+# ESP32 uses your PC's Wi-Fi IPv4 as the HTTP Host header; allow any host in DEBUG.
 ALLOWED_HOSTS = [
     "localhost",
     "127.0.0.1",
-    "10.205.251.242",  # Wi-Fi (same subnet as typical ESP32)
-    "192.168.56.1",  # Ethernet 2 / Host-Only fallback
+    "192.168.56.1",
 ]
+if DEBUG:
+    ALLOWED_HOSTS.append("*")
 
 
 # Application definition

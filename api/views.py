@@ -1,6 +1,7 @@
 """Public and health API views."""
 
 from datetime import timedelta
+from zoneinfo import ZoneInfo
 
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
@@ -11,6 +12,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from .constants import LIBRARY_RESERVATION_TZ
 from .models import Reservation, Table
 from .serializers import (
     IoTTableStatusSerializer,
@@ -65,6 +67,89 @@ class PublicTableListView(generics.ListAPIView):
             Table.objects.select_related("weight_sensor")
             .all()
             .order_by("table_number")
+        )
+
+
+@extend_schema(
+    summary="Weight-table live booking end (ST1 / sensor tables)",
+    description=(
+        "For a table linked to a weight sensor: if a reservation is active now "
+        "(start ≤ now < end), returns that booking's **end** in library local time. "
+        "Used by the reserve page and IoT display instead of a hard-coded clock."
+    ),
+    parameters=[_IOT_TABLE_NUMBER],
+    responses={
+        200: inline_serializer(
+            name="PublicWeightTableAvailability",
+            fields={
+                "table_number": serializers.IntegerField(),
+                "has_weight_sensor": serializers.BooleanField(),
+                "current_booking_ends_at": serializers.CharField(
+                    allow_null=True,
+                    help_text="ISO-8601 end of active reservation, or null.",
+                ),
+                "current_booking_ends_local": serializers.CharField(
+                    allow_null=True,
+                    help_text="HH:MM:SS in library timezone, or null.",
+                ),
+            },
+        ),
+        404: inline_serializer(
+            name="PublicWeightTableNotFound",
+            fields={"detail": serializers.CharField()},
+        ),
+    },
+    tags=["Public"],
+)
+class PublicTableWeightAvailabilityView(APIView):
+    """GET /api/public/tables/<table_number>/weight-availability/"""
+
+    permission_classes = [AllowAny]
+
+    def get(self, request, table_number):
+        try:
+            tn = int(table_number)
+        except (TypeError, ValueError):
+            return Response(
+                {"detail": "Invalid table number."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        try:
+            table = Table.objects.select_related("weight_sensor").get(table_number=tn)
+        except Table.DoesNotExist:
+            return Response(
+                {"detail": "Not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        has_weight_sensor = table.weight_sensor_id is not None
+        ends_at = None
+        ends_local = None
+
+        if has_weight_sensor:
+            now = timezone.now()
+            active = (
+                Reservation.objects.filter(
+                    table=table,
+                    is_available=True,
+                    start_time__lte=now,
+                    end_time__gt=now,
+                )
+                .order_by("end_time")
+                .first()
+            )
+            if active is not None:
+                ends_at = active.end_time
+                lib_tz = ZoneInfo(LIBRARY_RESERVATION_TZ)
+                ends_local = active.end_time.astimezone(lib_tz).strftime("%H:%M:%S")
+
+        return Response(
+            {
+                "table_number": table.table_number,
+                "has_weight_sensor": has_weight_sensor,
+                "current_booking_ends_at": ends_at.isoformat() if ends_at else None,
+                "current_booking_ends_local": ends_local,
+            }
         )
 
 

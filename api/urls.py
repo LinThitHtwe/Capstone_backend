@@ -18,6 +18,11 @@ urlpatterns = [
         name="public_tables",
     ),
     re_path(
+        r"^public/tables/(?P<table_number>\d+)/weight-availability/?$",
+        views.PublicTableWeightAvailabilityView.as_view(),
+        name="public_table_weight_availability",
+    ),
+    re_path(
         r"^map-reservations/?$",
         views.PublicMapReservationListView.as_view(),
         name="public_map_reservations",
