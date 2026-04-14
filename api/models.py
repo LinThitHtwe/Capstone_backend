@@ -4,7 +4,7 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 
-from .constants import ROLE_ADMIN
+from .constants import ROLE_ADMIN, TABLE_STATUS_FREE
 
 
 class UserManager(BaseUserManager):
@@ -95,6 +95,8 @@ class Table(models.Model):
     position_x = models.IntegerField()
     position_y = models.IntegerField()
     is_available = models.BooleanField(default=True)
+    # 1=free, 2=occupied, 3=reserved — see ``api.constants`` (TABLE_STATUS_*).
+    status = models.PositiveSmallIntegerField(default=TABLE_STATUS_FREE)
 
     class Meta:
         db_table = "Table"

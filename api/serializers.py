@@ -1,9 +1,22 @@
 from django.contrib.auth import get_user_model
+from django.db import transaction
+from django.utils import timezone as dj_timezone
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
-from .constants import PUBLIC_SIGNUP_ROLES
+from .constants import PUBLIC_SIGNUP_ROLES, RESERVATION_MAX_MINUTES_PER_USER_PER_DAY
 from .models import LCDDisplay, Reservation, Table, WeightSensor
+from .reservation_rules import (
+    combine_local,
+    duration_minutes,
+    is_slot_aligned,
+    library_open_close,
+    minutes_already_booked,
+    parse_hhmm,
+    table_has_overlap,
+    today_in_library,
+)
 
 User = get_user_model()
 
@@ -119,6 +132,9 @@ class AdminWeightSensorSerializer(serializers.ModelSerializer):
             self._sync_sensor_table(instance, table)
         return instance
 
+    @extend_schema_field(
+        serializers.JSONField(read_only=True, allow_null=True)
+    )
     def get_assigned_table(self, obj):
         tables = list(obj.tables.all())
         if not tables:
@@ -158,6 +174,9 @@ class AdminLCDDisplaySerializer(serializers.ModelSerializer):
         )
         read_only_fields = ("id", "recorded_at", "is_available", "assigned_table")
 
+    @extend_schema_field(
+        serializers.JSONField(read_only=True, allow_null=True)
+    )
     def get_assigned_table(self, obj):
         t = obj.table
         if not t:
@@ -184,6 +203,14 @@ class AdminLCDDisplaySerializer(serializers.ModelSerializer):
         return super().update(instance, validated_data)
 
 
+class IoTTableStatusSerializer(serializers.ModelSerializer):
+    """IoT poll/update: response body is only ``status``."""
+
+    class Meta:
+        model = Table
+        fields = ("status",)
+
+
 class PublicTableSerializer(serializers.ModelSerializer):
     """Read-only layout for the public library map (no admin-only fields)."""
 
@@ -200,9 +227,13 @@ class PublicTableSerializer(serializers.ModelSerializer):
             "position_y",
             "is_reservable",
             "is_available",
+            "status",
             "sensor_seated",
         )
 
+    @extend_schema_field(
+        serializers.BooleanField(read_only=True, allow_null=True)
+    )
     def get_sensor_seated(self, obj):
         """
         True when the linked weight sensor reads as occupied (not available).
@@ -222,6 +253,119 @@ class PublicMapReservationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Reservation
         fields = ("id", "table_number", "start_time", "end_time")
+
+
+class UserReservationReadSerializer(serializers.ModelSerializer):
+    """Current user's reservation rows (no OTP)."""
+
+    table_id = serializers.IntegerField(source="table.id", read_only=True)
+    table_number = serializers.IntegerField(source="table.table_number", read_only=True)
+
+    class Meta:
+        model = Reservation
+        fields = (
+            "id",
+            "table_id",
+            "table_number",
+            "start_time",
+            "end_time",
+            "duration_minutes",
+            "created_at",
+        )
+
+
+class UserReservationCreateSerializer(serializers.Serializer):
+    """
+    Book a reservable table. ``reservation_date`` and ``*_local`` times use the
+    library timezone (see ``api.constants.LIBRARY_RESERVATION_TZ``).
+    """
+
+    table_id = serializers.PrimaryKeyRelatedField(
+        queryset=Table.objects.filter(is_reservable=True), write_only=True
+    )
+    reservation_date = serializers.DateField()
+    start_local = serializers.CharField(max_length=5, min_length=5, write_only=True)
+    end_local = serializers.CharField(max_length=5, min_length=5, write_only=True)
+
+    def validate(self, attrs):
+        d = attrs["reservation_date"]
+        if d < today_in_library():
+            raise serializers.ValidationError(
+                {"reservation_date": "Cannot book a day in the past."}
+            )
+        st = parse_hhmm(attrs["start_local"])
+        et = parse_hhmm(attrs["end_local"])
+        if st is None:
+            raise serializers.ValidationError(
+                {"start_local": "Use HH:MM (24-hour), e.g. 09:30."}
+            )
+        if et is None:
+            raise serializers.ValidationError(
+                {"end_local": "Use HH:MM (24-hour), e.g. 11:30."}
+            )
+        if not is_slot_aligned(st) or not is_slot_aligned(et):
+            raise serializers.ValidationError(
+                "Start and end must align to 30-minute marks (whole hours or :30)."
+            )
+        window_start, window_end = library_open_close(d)
+        start_dt = combine_local(d, st)
+        end_dt = combine_local(d, et)
+        if start_dt >= end_dt:
+            raise serializers.ValidationError(
+                {"end_local": "End time must be after start time."}
+            )
+        if start_dt < window_start or end_dt > window_end:
+            raise serializers.ValidationError(
+                "Reservation must stay within library hours (09:00–18:00, local time)."
+            )
+        now = dj_timezone.now()
+        if start_dt < now:
+            raise serializers.ValidationError(
+                {"start_local": "Start time must be in the future."}
+            )
+        dur = duration_minutes(start_dt, end_dt)
+        if dur % 30 != 0:
+            raise serializers.ValidationError("Duration must be in 30-minute steps.")
+        attrs["_start_dt"] = start_dt
+        attrs["_end_dt"] = end_dt
+        attrs["_duration"] = dur
+        attrs["_local_day"] = d
+        return attrs
+
+    def create(self, validated_data):
+        user = self.context["request"].user
+        table = validated_data["table_id"]
+        start = validated_data["_start_dt"]
+        end = validated_data["_end_dt"]
+        duration = validated_data["_duration"]
+        local_day = validated_data["_local_day"]
+        with transaction.atomic():
+            booked = minutes_already_booked(user.pk, local_day)
+            if booked + duration > RESERVATION_MAX_MINUTES_PER_USER_PER_DAY:
+                raise serializers.ValidationError(
+                    {
+                        "non_field_errors": [
+                            "You already have 4 hours booked that day (maximum per user)."
+                        ]
+                    }
+                )
+            if table_has_overlap(table.pk, start, end):
+                raise serializers.ValidationError(
+                    {
+                        "non_field_errors": [
+                            "That table is already reserved for part of this time range."
+                        ]
+                    }
+                )
+            return Reservation.objects.create(
+                user=user,
+                table=table,
+                start_time=start,
+                end_time=end,
+                duration_minutes=duration,
+                is_available=True,
+                otp="",
+            )
 
 
 class AdminReservationSerializer(serializers.ModelSerializer):
@@ -278,18 +422,25 @@ class AdminTableSerializer(serializers.ModelSerializer):
             "position_y",
             "is_reservable",
             "is_available",
+            "status",
             "weight_sensor_id",
             "sensor_seated",
             "lcd_display",
             "lcd_display_id",
         )
 
+    @extend_schema_field(
+        serializers.BooleanField(read_only=True, allow_null=True)
+    )
     def get_sensor_seated(self, obj):
         ws = obj.weight_sensor
         if ws is None:
             return None
         return not ws.is_available
 
+    @extend_schema_field(
+        serializers.JSONField(read_only=True, allow_null=True)
+    )
     def get_lcd_display(self, obj):
         lcd = LCDDisplay.objects.filter(table=obj).first()
         if not lcd:

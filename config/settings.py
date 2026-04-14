@@ -34,7 +34,14 @@ SECRET_KEY = os.environ.get(
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ["localhost", "127.0.0.1"]
+# IoT / LAN: allow requests by PC IPv4 (ipconfig). Bind server with:
+#   python manage.py runserver 0.0.0.0:8001
+ALLOWED_HOSTS = [
+    "localhost",
+    "127.0.0.1",
+    "10.205.251.242",  # Wi-Fi (same subnet as typical ESP32)
+    "192.168.56.1",  # Ethernet 2 / Host-Only fallback
+]
 
 
 # Application definition
@@ -49,6 +56,7 @@ INSTALLED_APPS = [
     # Third-party
     'rest_framework',
     'rest_framework_simplejwt',
+    'drf_spectacular',
     # Local
     'api',
 ]
@@ -166,6 +174,23 @@ REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": [
         "rest_framework.renderers.JSONRenderer",
         "rest_framework.renderers.BrowsableAPIRenderer",
+    ],
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+}
+
+SPECTACULAR_SETTINGS = {
+    "TITLE": "Capstone Library API",
+    "DESCRIPTION": "REST API for auth, admin, public library map, and IoT table status.",
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    "SCHEMA_PATH_PREFIX": "/api",
+    "COMPONENT_SPLIT_REQUEST": True,
+    "TAGS": [
+        {"name": "Auth", "description": "Login, signup, token refresh"},
+        {"name": "Public", "description": "Unauthenticated map data"},
+        {"name": "IoT", "description": "Table status for devices"},
+        {"name": "Admin", "description": "JWT admin role required"},
+        {"name": "User", "description": "JWT user (non-admin) — reservations"},
     ],
 }
 

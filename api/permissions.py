@@ -1,18 +1,29 @@
+"""Custom DRF permissions."""
+
 from rest_framework.permissions import BasePermission
 
 from .constants import ROLE_ADMIN
 
 
-class IsAdminRole(BasePermission):
-    """Allow access only to authenticated users with role ``admin``."""
+class IsAuthenticatedNonAdmin(BasePermission):
+    """Logged-in users except admin (admin uses separate tools)."""
 
-    message = "Admin role required."
+    message = "This action is not available for admin accounts."
 
     def has_permission(self, request, view):
-        user = request.user
+        u = getattr(request, "user", None)
         return bool(
-            user
-            and user.is_authenticated
-            and user.is_staff
-            and getattr(user, "role", None) == ROLE_ADMIN
+            u and u.is_authenticated and getattr(u, "role", None) != ROLE_ADMIN
+        )
+
+
+class IsAdminRole(BasePermission):
+    """Requires an authenticated JWT user whose role is admin."""
+
+    message = "Admin access only."
+
+    def has_permission(self, request, view):
+        u = getattr(request, "user", None)
+        return bool(
+            u and u.is_authenticated and getattr(u, "role", None) == ROLE_ADMIN
         )

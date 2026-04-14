@@ -1,12 +1,17 @@
 from django.urls import path, re_path
 from rest_framework_simplejwt.views import TokenRefreshView
 
-from . import admin_views, auth_views, views
+from . import admin_views, auth_views, user_reservation_views, views
 
 app_name = "api"
 
 urlpatterns = [
     re_path(r"^health/?$", views.health, name="health"),
+    re_path(
+        r"^iot/table-status/(?P<table_number>\d+)/?$",
+        views.IoTTableStatusDetailView.as_view(),
+        name="iot_table_status",
+    ),
     re_path(
         r"^tables/?$",
         views.PublicTableListView.as_view(),
@@ -16,6 +21,11 @@ urlpatterns = [
         r"^map-reservations/?$",
         views.PublicMapReservationListView.as_view(),
         name="public_map_reservations",
+    ),
+    re_path(
+        r"^me/reservations/?$",
+        user_reservation_views.UserReservationListCreateView.as_view(),
+        name="user_reservations",
     ),
     # Optional trailing slash so POSTs never hit APPEND_SLASH (which cannot redirect POST).
     re_path(r"^auth/signup/?$", auth_views.SignupView.as_view(), name="signup"),
