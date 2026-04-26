@@ -7,6 +7,7 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 from .constants import PUBLIC_SIGNUP_ROLES, RESERVATION_MAX_MINUTES_PER_USER_PER_DAY
 from .models import LCDDisplay, Reservation, Table, WeightSensor
+from .reservation_email import generate_reservation_otp, send_reservation_otp_email
 from .reservation_rules import (
     combine_local,
     duration_minutes,
@@ -339,6 +340,7 @@ class UserReservationCreateSerializer(serializers.Serializer):
         end = validated_data["_end_dt"]
         duration = validated_data["_duration"]
         local_day = validated_data["_local_day"]
+        otp = generate_reservation_otp()
         with transaction.atomic():
             booked = minutes_already_booked(user.pk, local_day)
             if booked + duration > RESERVATION_MAX_MINUTES_PER_USER_PER_DAY:
@@ -357,15 +359,28 @@ class UserReservationCreateSerializer(serializers.Serializer):
                         ]
                     }
                 )
-            return Reservation.objects.create(
+            instance = Reservation.objects.create(
                 user=user,
                 table=table,
                 start_time=start,
                 end_time=end,
                 duration_minutes=duration,
                 is_available=True,
-                otp="",
+                otp=otp,
             )
+        try:
+            send_reservation_otp_email(user, instance, otp)
+        except Exception:
+            instance.delete()
+            raise serializers.ValidationError(
+                {
+                    "non_field_errors": [
+                        "We could not send the confirmation email. Your reservation was not saved. "
+                        "Please try again or contact the library."
+                    ]
+                }
+            )
+        return instance
 
 
 class AdminReservationSerializer(serializers.ModelSerializer):

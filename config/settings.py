@@ -202,3 +202,19 @@ SIMPLE_JWT = {
     "BLACKLIST_AFTER_ROTATION": False,
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
+
+# Email (reservation OTP, etc.)
+# Set EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend and the SMTP
+# variables below to send real mail. Default: console (prints in runserver).
+EMAIL_BACKEND = os.environ.get(
+    "EMAIL_BACKEND",
+    "django.core.mail.backends.console.EmailBackend",
+)
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "Library <noreply@example.com>")
+EMAIL_HOST = os.environ.get("EMAIL_HOST", "")
+_email_port = os.environ.get("EMAIL_PORT", "587")
+EMAIL_PORT = int(_email_port) if _email_port else 587
+EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "1").lower() in ("1", "true", "yes")
+EMAIL_USE_SSL = os.environ.get("EMAIL_USE_SSL", "0").lower() in ("1", "true", "yes")
+EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
