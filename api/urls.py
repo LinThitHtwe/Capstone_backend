@@ -13,6 +13,11 @@ urlpatterns = [
         name="iot_table_status",
     ),
     re_path(
+        r"^iot/tables/(?P<table_number>\d+)/verify-reservation-otp/?$",
+        views.IoTVerifyReservationOtpView.as_view(),
+        name="iot_verify_reservation_otp",
+    ),
+    re_path(
         r"^tables/?$",
         views.PublicTableListView.as_view(),
         name="public_tables",

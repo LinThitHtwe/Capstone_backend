@@ -5,17 +5,20 @@ import secrets
 from zoneinfo import ZoneInfo
 
 from django.conf import settings
-from django.core.mail import send_mail
+from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 
 from .constants import LIBRARY_RESERVATION_TZ
 
 logger = logging.getLogger(__name__)
 
+# Exclude 0, 2, 5, 8 for demo keypads / unreliable keys on those digits.
+_OTP_DIGITS = "134679"
+
 
 def generate_reservation_otp() -> str:
-    """Return a 6-digit numeric string (e.g. ``042891``)."""
-    return f"{secrets.randbelow(1_000_000):06d}"
+    """Return a 6-digit numeric string using only ``1``, ``3``, ``4``, ``6``, ``7``, ``9``."""
+    return "".join(secrets.choice(_OTP_DIGITS) for _ in range(6))
 
 
 def send_reservation_otp_email(user, reservation, otp: str) -> None:
@@ -35,7 +38,7 @@ def send_reservation_otp_email(user, reservation, otp: str) -> None:
     plain_body = (
         f"Your confirmation code (OTP) is: {otp}\n\n"
         f"Table: {table_num}\n"
-        f"Time: {time_range} ({LIBRARY_RESERVATION_TZ})\n"
+        f"Time: {time_range}\n"
     )
     html_body = render_to_string(
         "emails/reservation_otp.html",
@@ -43,18 +46,19 @@ def send_reservation_otp_email(user, reservation, otp: str) -> None:
             "otp": otp,
             "table_number": table_num,
             "time_range": time_range,
-            "tz_label": LIBRARY_RESERVATION_TZ,
         },
     )
+    # EmailMultiAlternatives ensures a proper multipart/alternative message with
+    # text/plain + text/html; many clients (Gmail, Outlook) render the HTML part.
+    msg = EmailMultiAlternatives(
+        subject=subject,
+        body=plain_body,
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        to=[user.email],
+    )
+    msg.attach_alternative(html_body, "text/html")
     try:
-        send_mail(
-            subject,
-            plain_body,
-            None,
-            [user.email],
-            fail_silently=False,
-            html_message=html_body,
-        )
+        msg.send(fail_silently=False)
     except Exception:
         logger.exception("Failed to send reservation OTP email to %s", user.email)
         raise

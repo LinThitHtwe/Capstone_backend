@@ -123,6 +123,7 @@ class Reservation(models.Model):
     duration_minutes = models.IntegerField()
     is_available = models.BooleanField(default=True)
     otp = models.CharField(max_length=32, blank=True)
+    otp_verified_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     reminder_sent_at = models.DateTimeField(null=True, blank=True)
     overstay_alert_sent_at = models.DateTimeField(null=True, blank=True)

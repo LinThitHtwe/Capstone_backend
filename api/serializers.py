@@ -5,7 +5,12 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
-from .constants import PUBLIC_SIGNUP_ROLES, RESERVATION_MAX_MINUTES_PER_USER_PER_DAY
+from .constants import (
+    PUBLIC_SIGNUP_ROLES,
+    RESERVATION_MAX_MINUTES_PER_USER_PER_DAY,
+    TABLE_STATUS_FREE,
+    TABLE_STATUS_RESERVED,
+)
 from .models import LCDDisplay, Reservation, Table, WeightSensor
 from .reservation_email import generate_reservation_otp, send_reservation_otp_email
 from .reservation_rules import (
@@ -368,10 +373,15 @@ class UserReservationCreateSerializer(serializers.Serializer):
                 is_available=True,
                 otp=otp,
             )
+            if table.weight_sensor_id:
+                Table.objects.filter(pk=table.pk).update(status=TABLE_STATUS_RESERVED)
         try:
             send_reservation_otp_email(user, instance, otp)
         except Exception:
-            instance.delete()
+            with transaction.atomic():
+                Reservation.objects.filter(pk=instance.pk).delete()
+                if table.weight_sensor_id:
+                    Table.objects.filter(pk=table.pk).update(status=TABLE_STATUS_FREE)
             raise serializers.ValidationError(
                 {
                     "non_field_errors": [
@@ -406,6 +416,7 @@ class AdminReservationSerializer(serializers.ModelSerializer):
             "duration_minutes",
             "is_available",
             "otp",
+            "otp_verified_at",
             "created_at",
             "reminder_sent_at",
             "overstay_alert_sent_at",
