@@ -1,11 +1,15 @@
+import math
+
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.utils import timezone as dj_timezone
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 from .constants import (
+    NOSHOW_BOOKING_COOLDOWN_SECONDS,
     PUBLIC_SIGNUP_ROLES,
     RESERVATION_MAX_MINUTES_PER_USER_PER_DAY,
     TABLE_STATUS_FREE,
@@ -16,6 +20,7 @@ from .reservation_email import generate_reservation_otp, send_reservation_otp_em
 from .reservation_rules import (
     combine_local,
     duration_minutes,
+    expire_weight_sensor_reservations_pending_otp,
     is_slot_aligned,
     library_open_close,
     minutes_already_booked,
@@ -25,6 +30,17 @@ from .reservation_rules import (
 )
 
 User = get_user_model()
+
+
+def reservation_attendance_status(obj: Reservation) -> str:
+    """pending / arrived / noshow — shared by user and admin reservation serializers."""
+    if obj.otp_verified_at:
+        return "arrived"
+    if not obj.is_available:
+        return "noshow"
+    if dj_timezone.now() >= obj.end_time:
+        return "noshow"
+    return "pending"
 
 
 class SignupSerializer(serializers.ModelSerializer):
@@ -266,6 +282,7 @@ class UserReservationReadSerializer(serializers.ModelSerializer):
 
     table_id = serializers.IntegerField(source="table.id", read_only=True)
     table_number = serializers.IntegerField(source="table.table_number", read_only=True)
+    status = serializers.SerializerMethodField()
 
     class Meta:
         model = Reservation
@@ -275,9 +292,14 @@ class UserReservationReadSerializer(serializers.ModelSerializer):
             "table_number",
             "start_time",
             "end_time",
+            "status",
             "duration_minutes",
             "created_at",
         )
+
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_status(self, obj):
+        return reservation_attendance_status(obj)
 
 
 class UserReservationCreateSerializer(serializers.Serializer):
@@ -325,6 +347,21 @@ class UserReservationCreateSerializer(serializers.Serializer):
                 "Reservation must stay within library hours (09:00–18:00, local time)."
             )
         now = dj_timezone.now()
+        blocked = (
+            User.objects.only("reservation_booking_blocked_until")
+            .get(pk=self.context["request"].user.pk)
+            .reservation_booking_blocked_until
+        )
+        if blocked is not None and now < blocked:
+            remaining = max(1, int(math.ceil((blocked - now).total_seconds())))
+            raise serializers.ValidationError(
+                {
+                    "non_field_errors": [
+                        f"No-show penalty: wait {remaining} more second(s) before booking again "
+                        f"(sensor table OTP timeout). The cool-down is {NOSHOW_BOOKING_COOLDOWN_SECONDS} seconds.",
+                    ]
+                }
+            )
         if start_dt < now:
             raise serializers.ValidationError(
                 {"start_local": "Start time must be in the future."}
@@ -346,6 +383,7 @@ class UserReservationCreateSerializer(serializers.Serializer):
         duration = validated_data["_duration"]
         local_day = validated_data["_local_day"]
         otp = generate_reservation_otp()
+        expire_weight_sensor_reservations_pending_otp(dj_timezone.now())
         with transaction.atomic():
             booked = minutes_already_booked(user.pk, local_day)
             if booked + duration > RESERVATION_MAX_MINUTES_PER_USER_PER_DAY:
@@ -401,6 +439,7 @@ class AdminReservationSerializer(serializers.ModelSerializer):
     user_name = serializers.CharField(source="user.name", read_only=True)
     table_id = serializers.IntegerField(source="table.id", read_only=True)
     table_number = serializers.IntegerField(source="table.table_number", read_only=True)
+    status = serializers.SerializerMethodField()
 
     class Meta:
         model = Reservation
@@ -414,13 +453,17 @@ class AdminReservationSerializer(serializers.ModelSerializer):
             "start_time",
             "end_time",
             "duration_minutes",
-            "is_available",
+            "status",
             "otp",
             "otp_verified_at",
             "created_at",
             "reminder_sent_at",
             "overstay_alert_sent_at",
         )
+
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_status(self, obj):
+        return reservation_attendance_status(obj)
 
 
 class AdminTableSerializer(serializers.ModelSerializer):

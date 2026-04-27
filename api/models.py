@@ -39,6 +39,8 @@ class User(AbstractBaseUser, PermissionsMixin):
     date_joined = models.DateTimeField(default=timezone.now)
     is_staff = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
+    # Set when a weight-sensor booking is voided for no OTP; blocks new reservations until this time.
+    reservation_booking_blocked_until = models.DateTimeField(null=True, blank=True)
 
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = ["name", "role", "id_number"]

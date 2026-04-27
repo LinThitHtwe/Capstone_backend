@@ -29,7 +29,7 @@ class UserReservationListCreateView(generics.ListCreateAPIView):
         return (
             Reservation.objects.filter(user=self.request.user)
             .select_related("table")
-            .order_by("-start_time")
+            .order_by("id")
         )
 
     def get_serializer_class(self):

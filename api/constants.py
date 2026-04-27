@@ -23,3 +23,11 @@ RESERVATION_SLOT_MINUTES = 30
 RESERVATION_DAY_START_HOUR = 9
 RESERVATION_DAY_END_HOUR = 18
 RESERVATION_MAX_MINUTES_PER_USER_PER_DAY = 240  # 4 hours
+
+# Weight-sensor tables (e.g. ST1): if OTP is not verified within this many seconds
+# of ``Reservation.created_at``, the booking is voided (noshow) and the table is freed.
+WEIGHT_TABLE_OTP_GRACE_SECONDS = 60
+
+# After a sensor-table no-show (OTP timeout void), the user cannot create a new reservation
+# until this many seconds have passed (same length as grace by default).
+NOSHOW_BOOKING_COOLDOWN_SECONDS = 60

@@ -20,6 +20,7 @@ from .constants import (
     TABLE_STATUS_RESERVED,
 )
 from .models import Reservation, Table
+from .reservation_rules import expire_weight_sensor_reservations_pending_otp
 from .serializers import (
     IoTTableStatusSerializer,
     PublicMapReservationSerializer,
@@ -99,7 +100,9 @@ class PublicTableListView(generics.ListAPIView):
         "For a table linked to a weight sensor: if a reservation is active now "
         "(start ≤ now < end), returns that booking's **end** in library local time. "
         "Also returns the next/upcoming booking window (``end_time`` > now) for IoT "
-        "OLED text and ``otp_verified`` for keypad flow."
+        "OLED text and ``otp_verified`` for keypad flow. "
+        "Sensor-table bookings without OTP within 60 seconds of ``created_at`` are "
+        "voided (noshow) and the table is freed."
     ),
     parameters=[_IOT_TABLE_NUMBER],
     responses={
@@ -157,6 +160,9 @@ class PublicTableWeightAvailabilityView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
+        expire_weight_sensor_reservations_pending_otp(timezone.now())
+        table.refresh_from_db(fields=["status"])
+
         has_weight_sensor = table.weight_sensor_id is not None
         ends_at = None
         ends_local = None
@@ -171,7 +177,7 @@ class PublicTableWeightAvailabilityView(APIView):
 
             lib_tz = ZoneInfo(LIBRARY_RESERVATION_TZ)
             # Next/current booking not yet ended (start time ignored for display/OLED).
-            # IoT OTP verify still requires start_time <= now — see IoTVerifyReservationOtpView.
+            # IoT OTP verify uses the same row selection — see IoTVerifyReservationOtpView.
             display_booking = (
                 Reservation.objects.filter(
                     table=table,
@@ -258,6 +264,7 @@ class IoTVerifyReservationOtpView(APIView):
                 {"detail": "This table does not use OTP check-in."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        expire_weight_sensor_reservations_pending_otp(timezone.now())
         otp_raw = request.data.get("otp")
         if otp_raw is None:
             return Response(
@@ -335,6 +342,8 @@ class IoTTableStatusDetailView(APIView):
                 {"detail": "Not found."},
                 status=status.HTTP_404_NOT_FOUND,
             )
+        expire_weight_sensor_reservations_pending_otp(timezone.now())
+        table.refresh_from_db(fields=["status"])
         return Response(IoTTableStatusSerializer(table).data)
 
     @extend_schema(

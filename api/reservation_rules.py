@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from django.utils import timezone as dj_tz
+
+logger = logging.getLogger(__name__)
 
 from .constants import (
     LIBRARY_RESERVATION_TZ,
@@ -107,3 +110,97 @@ def table_has_overlap(table_id: int, start: datetime, end: datetime, exclude_pk=
     if exclude_pk is not None:
         qs = qs.exclude(pk=exclude_pk)
     return qs.exists()
+
+
+def _send_noshow_timeout_emails_for_reservations(reservation_ids: list[int]) -> None:
+    """
+    After the voiding transaction commits: refetch rows and email each booker.
+    Must not run inside the same atomic block as the updates (use on_commit).
+    """
+    from .models import Reservation
+    from .reservation_email import send_reservation_noshow_timeout_email
+
+    if not reservation_ids:
+        return
+    logger.info(
+        "Noshow-timeout: sending cancellation emails for reservation id(s) %s",
+        reservation_ids,
+    )
+    for pk in reservation_ids:
+        try:
+            row = Reservation.objects.select_related("user", "table").get(pk=pk)
+        except Reservation.DoesNotExist:
+            logger.warning(
+                "Noshow-timeout email skipped: reservation id=%s not found after commit",
+                pk,
+            )
+            continue
+        addr = (row.user.email or "").strip()
+        if not addr:
+            logger.warning(
+                "Noshow-timeout email skipped: reservation id=%s user id=%s has no email",
+                pk,
+                row.user_id,
+            )
+            continue
+        send_reservation_noshow_timeout_email(row.user, row)
+
+
+def expire_weight_sensor_reservations_pending_otp(now: datetime | None = None) -> int:
+    """
+    For tables with a weight sensor: if a reservation was created but OTP was never
+    verified within ``WEIGHT_TABLE_OTP_GRACE_SECONDS`` of ``created_at``, mark the row
+    inactive (``is_available=False``) and set the table back to FREE when it was RESERVED.
+
+    Returns the number of reservations voided.
+    """
+    from django.db import transaction
+
+    from .constants import (
+        NOSHOW_BOOKING_COOLDOWN_SECONDS,
+        TABLE_STATUS_FREE,
+        TABLE_STATUS_RESERVED,
+        WEIGHT_TABLE_OTP_GRACE_SECONDS,
+    )
+    from .models import Reservation, Table, User
+
+    now = now or dj_tz.now()
+    cutoff = now - timedelta(seconds=WEIGHT_TABLE_OTP_GRACE_SECONDS)
+
+    with transaction.atomic():
+        rows = list(
+            Reservation.objects.select_related("table", "user")
+            .filter(
+                is_available=True,
+                otp_verified_at__isnull=True,
+                table__weight_sensor__isnull=False,
+                created_at__lte=cutoff,
+            )
+        )
+        if not rows:
+            return 0
+        table_pks = {
+            r.table_id
+            for r in rows
+            if r.table.weight_sensor_id and r.table.status == TABLE_STATUS_RESERVED
+        }
+        res_pks = [r.pk for r in rows]
+        Reservation.objects.filter(pk__in=res_pks).update(is_available=False)
+        if table_pks:
+            Table.objects.filter(
+                pk__in=table_pks,
+                status=TABLE_STATUS_RESERVED,
+            ).update(status=TABLE_STATUS_FREE)
+        block_until = now + timedelta(seconds=NOSHOW_BOOKING_COOLDOWN_SECONDS)
+        for uid in {r.user_id for r in rows}:
+            User.objects.filter(pk=uid).update(
+                reservation_booking_blocked_until=block_until
+            )
+        # Send only after this transaction commits (avoids rollback/silent drops and
+        # matches Django mail expectations when nested in outer atomic blocks).
+        pks_for_email = list(res_pks)
+        transaction.on_commit(
+            lambda ids=pks_for_email: _send_noshow_timeout_emails_for_reservations(ids)
+        )
+
+    return len(res_pks)

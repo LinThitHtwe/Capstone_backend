@@ -12,8 +12,9 @@ Requires ``ADMIN_EMAIL`` and ``ADMIN_PASSWORD`` in ``.env`` (same as
 """
 
 import os
-from datetime import timedelta
+from datetime import date, datetime, time as dt_time, timedelta
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
@@ -22,6 +23,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from api.constants import (
+    LIBRARY_RESERVATION_TZ,
     ROLE_LECTURER,
     ROLE_STAFF,
     ROLE_STUDENT,
@@ -224,26 +226,45 @@ class Command(BaseCommand):
                 )
 
             n_tables = len(tables_by_number)
+            # Fixed calendar window for demo reservations (not "today" / rolling future).
+            lib_tz = ZoneInfo(LIBRARY_RESERVATION_TZ)
+            demo_res_first = date(2026, 4, 20)
+            demo_res_last = date(2026, 4, 26)
+
+            def _demo_local(dt_d, hour, minute=0):
+                return datetime.combine(dt_d, dt_time(hour, minute), tzinfo=lib_tz)
+
             for j in range(48):
                 user = demo_users[j % len(demo_users)]
                 tnum = (j % n_tables) + 1
+                day = demo_res_first + timedelta(days=(j % 7))
+                if day > demo_res_last:
+                    day = demo_res_last
+                h_start = 9 + (j % 8)
+                if h_start > 16:
+                    h_start = 16
+                m_start = (j * 7) % 60
+                start = _demo_local(day, h_start, m_start)
                 if j % 5 == 0:
-                    start = now - timedelta(minutes=25 + j * 2)
-                    end = now + timedelta(hours=2, minutes=j * 11)
+                    end = start + timedelta(hours=2, minutes=(j * 11) % 90)
                 elif j % 5 == 1:
-                    start = now + timedelta(hours=2, minutes=j * 7)
                     end = start + timedelta(hours=2, minutes=30)
                 elif j % 5 == 2:
-                    start = now + timedelta(hours=8, minutes=j * 5)
                     end = start + timedelta(hours=3)
                 elif j % 5 == 3:
-                    start = now + timedelta(hours=22, minutes=j * 3)
                     end = start + timedelta(hours=2, minutes=45)
                 else:
-                    start = now + timedelta(hours=36, minutes=j * 4)
                     end = start + timedelta(hours=4)
+                day_close = _demo_local(day, 18, 0)
+                if end > day_close:
+                    end = day_close
+                if end <= start:
+                    end = start + timedelta(minutes=30)
                 mins = max(1, int((end - start).total_seconds() // 60))
-                Reservation.objects.create(
+                otp_verified_at = None
+                if j % 9 == 0:
+                    otp_verified_at = start + timedelta(minutes=10)
+                row = Reservation.objects.create(
                     user=user,
                     table=tables_by_number[tnum],
                     start_time=start,
@@ -251,7 +272,13 @@ class Command(BaseCommand):
                     duration_minutes=mins,
                     is_available=True,
                     otp="",
+                    otp_verified_at=otp_verified_at,
                 )
+                created_at = start - timedelta(minutes=8 + (j % 25))
+                latest_created = _demo_local(demo_res_last, 23, 30)
+                if created_at > latest_created:
+                    created_at = latest_created - timedelta(minutes=(j % 40) + 1)
+                Reservation.objects.filter(pk=row.pk).update(created_at=created_at)
 
             for ws in sensors:
                 for k in range(5):

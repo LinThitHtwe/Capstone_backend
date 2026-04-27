@@ -1,0 +1,78 @@
+{% comment %}
+Auto-cancel: weight-sensor table, OTP not verified within grace period after booking.
+{% endcomment %}
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="x-apple-disable-message-reformatting" />
+  <meta name="format-detection" content="telephone=no,date=no,address=no,email=no" />
+  <!--[if mso]>
+  <style type="text/css">
+    table { border-collapse: collapse; }
+  </style>
+  <![endif]-->
+  <title>Reservation cancelled</title>
+</head>
+<body style="margin:0;padding:0;min-width:100%;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;background-color:#f1f5f9;">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;visibility:hidden;mso-hide:all;">Your table #{{ table_number }} booking was cancelled &mdash; no check-in within {{ grace_seconds }} seconds.</div>
+  <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="width:100%;background-color:#f1f5f9;" bgcolor="#f1f5f9">
+    <tr>
+      <td align="center" style="padding:24px 12px 40px;">
+        <!--[if mso]>
+        <table width="600" border="0" cellspacing="0" cellpadding="0"><tr><td>
+        <![endif]-->
+        <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width:600px;width:100%;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;background-color:#ffffff;" bgcolor="#ffffff">
+          <tr>
+            <td style="height:4px;background-color:#b91c1c; line-height:4px;font-size:0;" bgcolor="#b91c1c">
+              <span style="line-height:4px;font-size:0;">&nbsp;</span>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:28px 32px 20px;background-color:#ffffff;" bgcolor="#ffffff">
+              <p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:#64748b;">Library &mdash; Booking update</p>
+              <h1 style="margin:10px 0 0;padding:0;font-family:Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#0f172a;line-height:1.25;">Your reservation was cancelled</h1>
+              <p style="margin:12px 0 0;padding:0;font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#334155;line-height:1.55;">We did not receive your check-in code (OTP) at the table within <strong>{{ grace_seconds }} seconds</strong> of confirming this booking. The table is released for other users.</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:0 32px 20px;" bgcolor="#ffffff">
+              <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="border:1px solid #fecaca;border-radius:6px;" bgcolor="#fef2f2">
+                <tr>
+                  <td style="padding:20px 24px;background-color:#fef2f2;" bgcolor="#fef2f2">
+                    <p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:600;color:#991b1b;line-height:1.5;">Reason: no OTP check-in at the sensor table within the allowed time.</p>
+                    <p style="margin:10px 0 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#7f1d1d;line-height:1.55;">No-show penalty: you cannot make another reservation for <strong>{{ booking_cooldown_seconds }} seconds</strong> from the time of this cancellation.</p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:0 32px 28px;background-color:#ffffff;" bgcolor="#ffffff">
+              <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="font-size:15px;">
+                <tr>
+                  <td style="width:100px;vertical-align:top;padding:10px 0 8px 0;border-bottom:1px solid #f1f5f9;font-family:Arial,Helvetica,sans-serif;color:#64748b;">Table</td>
+                  <td style="padding:10px 0 8px 0;border-bottom:1px solid #f1f5f9;font-family:Arial,Helvetica,sans-serif;font-weight:700;color:#0f172a;">#{{ table_number }}</td>
+                </tr>
+                <tr>
+                  <td style="vertical-align:top;padding:10px 0 0;font-family:Arial,Helvetica,sans-serif;color:#64748b;">Scheduled time</td>
+                  <td style="padding:10px 0 0;font-family:Arial,Helvetica,sans-serif;color:#0f172a;">{{ time_range }}</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:20px 32px 24px;border-top:1px solid #f1f5f9;background-color:#f8fafc;" bgcolor="#f8fafc">
+              <p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.5;color:#94a3b8;">You may book another slot if tables are available. This is an automated message; please do not reply. For help, contact your library support.</p>
+            </td>
+          </tr>
+        </table>
+        <!--[if mso]>
+        </td></tr></table>
+        <![endif]-->
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.db.models import Prefetch, Q
+from django.utils import timezone
 from rest_framework import generics
 from rest_framework.pagination import PageNumberPagination
 
@@ -12,6 +13,7 @@ from .constants import (
 )
 from .models import LCDDisplay, Reservation, Table, WeightSensor
 from .permissions import IsAdminRole
+from .reservation_rules import expire_weight_sensor_reservations_pending_otp
 from .serializers import (
     AdminLCDDisplaySerializer,
     AdminReservationSerializer,
@@ -153,6 +155,7 @@ class AdminReservationListView(generics.ListAPIView):
     pagination_class = AdminStudentPagination
 
     def get_queryset(self):
+        expire_weight_sensor_reservations_pending_otp(timezone.now())
         qs = Reservation.objects.select_related("user", "table").all()
         search = (self.request.query_params.get("search") or "").strip()
         if search:
@@ -185,8 +188,6 @@ class AdminReservationListView(generics.ListAPIView):
             "-user_email": "-user__email",
             "user_name": "user__name",
             "-user_name": "-user__name",
-            "is_available": "is_available",
-            "-is_available": "-is_available",
         }
         if ordering in order_map:
             qs = qs.order_by(order_map[ordering])
@@ -198,7 +199,10 @@ class AdminReservationListView(generics.ListAPIView):
 class AdminReservationDetailView(generics.RetrieveAPIView):
     permission_classes = [IsAdminRole]
     serializer_class = AdminReservationSerializer
-    queryset = Reservation.objects.select_related("user", "table").all()
+
+    def get_queryset(self):
+        expire_weight_sensor_reservations_pending_otp(timezone.now())
+        return Reservation.objects.select_related("user", "table").all()
 
 
 class AdminWeightSensorListCreateView(generics.ListCreateAPIView):
